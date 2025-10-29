@@ -1,6 +1,9 @@
 import json
 import argparse
 import sys
+import urllib.request
+import gzip
+import xml.etree.ElementTree as ET
 
 
 class Config:
@@ -39,6 +42,50 @@ class Config:
             raise ValueError("Max depth must be a positive integer")
 
 
+def get_package_dependencies(package_name, repository_url):
+    try:
+        if repository_url.endswith('/'):
+            repository_url = repository_url[:-1]
+
+        search_url = f"{repository_url}/FindPackagesById()?id='{package_name}'"
+
+        request = urllib.request.Request(search_url)
+        request.add_header('Accept-Encoding', 'gzip')
+
+        with urllib.request.urlopen(request) as response:
+            if response.info().get('Content-Encoding') == 'gzip':
+                content = gzip.decompress(response.read()).decode('utf-8')
+            else:
+                content = response.read().decode('utf-8')
+
+        dependencies = []
+        namespace = {
+            'atom': 'http://www.w3.org/2005/Atom',
+            'm': 'http://schemas.microsoft.com/ado/2007/08/dataservices/metadata',
+            'd': 'http://schemas.microsoft.com/ado/2007/08/dataservices'
+        }
+
+        root = ET.fromstring(content)
+        entries = root.findall('.//atom:entry', namespace)
+
+        for entry in entries:
+            properties = entry.find('.//m:properties', namespace)
+            if properties is not None:
+                deps_elem = properties.find('d:Dependencies', namespace)
+                if deps_elem is not None and deps_elem.text:
+                    deps_str = deps_elem.text
+                    for dep in deps_str.split('|'):
+                        if ':' in dep:
+                            dep_package = dep.split(':')[0]
+                            if dep_package and dep_package != package_name:
+                                dependencies.append(dep_package)
+
+        return list(set(dependencies))
+
+    except Exception as e:
+        raise ValueError(f"Error fetching dependencies for {package_name}: {e}")
+
+
 def print_config(config):
     print("Configuration parameters:")
     print(f"  package_name: {config.package_name}")
@@ -58,6 +105,15 @@ def main():
         config = Config()
         config.load_from_file(args.config)
         print_config(config)
+
+        print(f"\nDirect dependencies for package '{config.package_name}':")
+        dependencies = get_package_dependencies(config.package_name, config.repository_url)
+
+        if dependencies:
+            for i, dep in enumerate(dependencies, 1):
+                print(f"  {i}. {dep}")
+        else:
+            print("  No dependencies found")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

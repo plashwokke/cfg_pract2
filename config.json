@@ -1,6 +1,6 @@
 {
-    "package_name": "example-package",
-    "repository_url": "https://example.com/repo",
+    "package_name": "Newtonsoft.Json",
+    "repository_url": "https://packages.nuget.org/api/v2",
     "test_mode": true,
     "output_file": "dependencies.png",
     "ascii_tree": false,
