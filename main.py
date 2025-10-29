@@ -4,6 +4,8 @@ import sys
 import urllib.request
 import gzip
 import xml.etree.ElementTree as ET
+from collections import deque
+import os
 
 
 class Config:
@@ -86,6 +88,50 @@ def get_package_dependencies(package_name, repository_url):
         raise ValueError(f"Error fetching dependencies for {package_name}: {e}")
 
 
+def load_test_repository(file_path):
+    try:
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        raise ValueError(f"Error loading test repository: {e}")
+
+
+def build_dependency_graph(start_package, repository, max_depth, is_test_mode=False):
+    graph = {}
+    visited = set()
+    queue = deque([(start_package, 0)])
+
+    while queue:
+        current_package, depth = queue.popleft()
+
+        if current_package in visited:
+            continue
+
+        visited.add(current_package)
+
+        if depth >= max_depth:
+            continue
+
+        if is_test_mode:
+            dependencies = repository.get(current_package, [])
+        else:
+            dependencies = get_package_dependencies(current_package, repository)
+
+        graph[current_package] = dependencies
+
+        for dep in dependencies:
+            if dep not in visited:
+                queue.append((dep, depth + 1))
+
+    return graph
+
+
+def print_dependency_graph(graph):
+    print("\nDependency graph:")
+    for package, dependencies in graph.items():
+        print(f"  {package} -> {dependencies}")
+
+
 def print_config(config):
     print("Configuration parameters:")
     print(f"  package_name: {config.package_name}")
@@ -106,14 +152,17 @@ def main():
         config.load_from_file(args.config)
         print_config(config)
 
-        print(f"\nDirect dependencies for package '{config.package_name}':")
-        dependencies = get_package_dependencies(config.package_name, config.repository_url)
-
-        if dependencies:
-            for i, dep in enumerate(dependencies, 1):
-                print(f"  {i}. {dep}")
+        if config.test_mode:
+            if not os.path.exists(config.repository_url):
+                raise ValueError(f"Test repository file not found: {config.repository_url}")
+            print(f"\nBuilding dependency graph for '{config.package_name}' from test repository...")
+            test_repo = load_test_repository(config.repository_url)
+            graph = build_dependency_graph(config.package_name, test_repo, config.max_depth, is_test_mode=True)
         else:
-            print("  No dependencies found")
+            print(f"\nBuilding dependency graph for '{config.package_name}' from NuGet...")
+            graph = build_dependency_graph(config.package_name, config.repository_url, config.max_depth)
+
+        print_dependency_graph(graph)
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -1,0 +1,8 @@
+{
+    "package_name": "A",
+    "repository_url": "test_repo.json",
+    "test_mode": true,
+    "output_file": "dependencies.png",
+    "ascii_tree": false,
+    "max_depth": 3
+}
